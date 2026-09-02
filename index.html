@@ -91,10 +91,13 @@ const CAGNOTTE = {
   ],
 
   // Les participations reçues, la plus récente en premier.
+  // Pour cacher une somme, ajoute  auLieuDuMontant: "merci"  avec le texte
+  // que tu veux à la place. Le montant reste compté dans le total et fait
+  // avancer l'avion, il n'est simplement pas affiché.
   // Pour repartir de zéro : participations: []
   participations: [
 
-    { nom: "Anne Oudin", montant: 500, mot: "" },
+    { nom: "Anne Oudin", montant: 500, mot: "" }
 
   ]
 };
@@ -305,6 +308,7 @@ h2.titre-mots{
 .don .qui{font-weight:600}
 .don .fil{flex:1;border-bottom:1px dotted var(--trace);transform:translateY(-4px)}
 .don .combien{color:var(--or);font-variant-numeric:tabular-nums;white-space:nowrap}
+.don .combien.discret{color:var(--brume);font-style:italic}
 .don blockquote{
   font-family:"Playfair Display",Georgia,serif;
   font-style:italic;font-size:18.5px;line-height:1.5;
@@ -487,7 +491,9 @@ footer{margin-top:52px;color:var(--brume);font-size:14.5px}
     </div>
 
     <p class="patience">Tu peux joindre un petit mot à ton envoi, ou nous l'écrire à côté :
-       on le recopiera sous ta participation, plus bas sur cette page.</p>
+       on le recopiera sous ta participation, plus bas sur cette page. Dis-nous aussi
+       si tu préfères que ton montant n'apparaisse pas, on le remplacera par ce que
+       tu veux.</p>
 
     <p class="patience">Ton envoi, lui, arrive tout de suite. Cette page est mise à jour
        à la main : si ta participation n'apparaît pas dans la minute, pas de panique,
@@ -643,7 +649,10 @@ footer{margin-top:52px;color:var(--brume);font-size:14.5px}
         '<div class="ligne-don"><span class="qui"></span><span class="fil"></span>' +
         '<span class="combien"></span></div>' + (p.mot ? '<blockquote></blockquote>' : '');
       li.querySelector('.qui').textContent     = p.nom;
-      li.querySelector('.combien').textContent = euros(p.montant) + ' €';
+      const remplace = typeof p.auLieuDuMontant === 'string' && p.auLieuDuMontant !== '';
+      li.querySelector('.combien').textContent =
+        remplace ? p.auLieuDuMontant : euros(p.montant) + ' €';
+      if (remplace) li.querySelector('.combien').classList.add('discret');
       if (p.mot) li.querySelector('blockquote').textContent = p.mot;
       mots.appendChild(li);
     });
