@@ -52,6 +52,10 @@ const CAGNOTTE = {
     "Elle existe si l'envie vous prend de nous offrir un bout du séjour."
   ],
 
+  // L'adresse de ta base Realtime Database, onglet Données.
+  // Laisse "" pour désactiver le formulaire de messages.
+  baseMessages: "",
+
   wero:   "06 66 03 15 72",                  // le mobile rattaché à Wero
   paypal: "oudin.yannick@hotmail.fr",        // adresse ou numéro PayPal, "" pour masquer
 
@@ -246,6 +250,35 @@ h2.titre-etapes{
 .bouton:hover{background:var(--or-clair)}
 .bouton:active{transform:scale(.97)}
 .bouton:focus-visible{outline:2px solid var(--parchemin);outline-offset:3px}
+.livre{
+  margin-top:24px;
+  padding-top:24px;
+  border-top:1px solid var(--trace);
+}
+.livre h3{font-size:16px;font-weight:600;margin-bottom:4px}
+.livre > p{color:var(--brume);font-size:15.5px;max-width:46ch}
+.livre label{display:block;font-size:14.5px;color:var(--brume);margin:16px 0 6px}
+.livre input[type=text],
+.livre textarea{
+  font:inherit;font-size:16px;
+  width:100%;max-width:420px;
+  color:var(--parchemin);
+  background:var(--creux);
+  border:1px solid var(--trace);
+  border-radius:9px;
+  padding:10px 12px;
+  display:block;
+}
+.livre textarea{resize:vertical;line-height:1.5}
+.livre input[type=text]:focus,
+.livre textarea:focus{outline:2px solid var(--or);outline-offset:1px}
+.livre .choix{display:flex;align-items:flex-start;gap:9px;margin-top:16px;max-width:420px}
+.livre .choix input{width:18px;height:18px;margin-top:2px;accent-color:var(--or);flex:none}
+.livre .choix label{margin:0;font-size:14.5px;line-height:1.4}
+.livre .envoi{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:20px}
+#f-etat{font-size:14.5px;color:var(--brume)}
+#f-etat.ok{color:var(--or)}
+.don .quand{font-size:13.5px;color:var(--brume);opacity:.75;margin-top:4px}
 .patience + .patience{margin-top:10px;padding-top:0;border-top:0}
 .patience{
   margin-top:22px;
@@ -492,6 +525,27 @@ footer{margin-top:52px;color:var(--brume);font-size:14.5px}
       <p>Tu préfères un virement classique ? Demande-nous le RIB, on te l'envoie.</p>
     </div>
 
+    <form class="livre" id="livre" hidden>
+      <h3>Laisser un mot</h3>
+      <p>Il apparaîtra tout de suite en bas de la page, avec les autres.</p>
+
+      <label for="f-nom">Ton prénom</label>
+      <input type="text" id="f-nom" maxlength="40" autocomplete="name" required>
+
+      <label for="f-mot">Ton message</label>
+      <textarea id="f-mot" rows="4" maxlength="500" required></textarea>
+
+      <p class="choix">
+        <input type="checkbox" id="f-cache">
+        <label for="f-cache">Je préfère que mon montant n'apparaisse pas sur la page</label>
+      </p>
+
+      <p class="envoi">
+        <button class="bouton" type="submit" id="f-envoyer">Publier mon mot</button>
+        <span id="f-etat" role="status" aria-live="polite"></span>
+      </p>
+    </form>
+
     <p class="patience">Tu peux joindre un petit mot à ton envoi, ou nous l'écrire à côté :
        on le recopiera sous ta participation, plus bas sur cette page. Dis-nous aussi
        si tu préfères que ton montant n'apparaisse pas, on le remplacera par ce que
@@ -641,22 +695,126 @@ footer{margin-top:52px;color:var(--brume);font-size:14.5px}
 
   /* ---------- les mots ---------- */
   const mots = document.getElementById('mots');
-  if (c.participations.length === 0) {
-    mots.innerHTML = '<li class="vide">Personne encore. À toi l\'honneur.</li>';
-  } else {
+
+  // Pour rapprocher « Mamie » de « mamie » ou de « Mamié ».
+  const cle = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                            .toLowerCase().replace(/\s+/g, ' ').trim();
+
+  function afficher(enLigne){
+    mots.innerHTML = '';
+    const restants = (enLigne || []).slice();
+
     c.participations.forEach(p => {
-      const li = document.createElement('li');
-      li.className = 'don';
-      li.innerHTML =
-        '<div class="ligne-don"><span class="qui"></span><span class="fil"></span>' +
-        '<span class="combien"></span></div>' + (p.mot ? '<blockquote></blockquote>' : '');
-      li.querySelector('.qui').textContent     = p.nom;
-      const remplace = typeof p.auLieuDuMontant === 'string' && p.auLieuDuMontant !== '';
-      li.querySelector('.combien').textContent =
-        remplace ? p.auLieuDuMontant : euros(p.montant) + ' €';
-      if (remplace) li.querySelector('.combien').classList.add('discret');
-      if (p.mot) li.querySelector('blockquote').textContent = p.mot;
-      mots.appendChild(li);
+      // Un message laissé sur le site par cette même personne ?
+      let joint = null;
+      const i = restants.findIndex(m => cle(m.nom) === cle(p.nom));
+      if (i !== -1) joint = restants.splice(i, 1)[0];
+
+      const texte = p.mot || (joint ? joint.mot : '');
+      const cache = (typeof p.auLieuDuMontant === 'string' && p.auLieuDuMontant !== '')
+                    ? p.auLieuDuMontant
+                    : (joint && joint.montantVisible === false ? 'merci' : null);
+
+      mots.appendChild(ligne(p.nom, cache !== null ? cache : euros(p.montant) + ' €',
+                             cache !== null, texte, null));
+    });
+
+    // Les mots arrivés avant que le montant soit enregistré :
+    // la date prend la place de la somme, pour ne pas laisser un vide.
+    restants.forEach(m => {
+      mots.appendChild(ligne(m.nom, m.quand || 'merci', true, m.mot, null));
+    });
+
+    if (!mots.children.length) {
+      mots.innerHTML = '<li class="vide">Personne encore. À toi l\'honneur.</li>';
+    }
+  }
+
+  function ligne(nom, montant, discret, texte, quand){
+    const li = document.createElement('li');
+    li.className = 'don';
+    li.innerHTML =
+      '<div class="ligne-don"><span class="qui"></span><span class="fil"></span>' +
+      '<span class="combien"></span></div>' +
+      (texte ? '<blockquote></blockquote>' : '');
+    li.querySelector('.qui').textContent     = nom;
+    li.querySelector('.combien').textContent = montant;
+    if (discret) li.querySelector('.combien').classList.add('discret');
+    if (texte)   li.querySelector('blockquote').textContent = texte;
+    return li;
+  }
+
+  afficher([]);
+
+  /* ---------- le livre d'or, côté Firestore ---------- */
+  const actif = !!c.baseMessages;
+  const base  = actif
+    ? c.baseMessages.replace(/\/+$/, '') + '/messages.json'
+    : null;
+
+  async function chargerMessages(){
+    if (!actif) return;
+    try {
+      const r = await fetch(base, {cache:'no-store'});
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      const liste = Object.values(data || {})
+        .filter(m => m && m.nom && m.mot)
+        .map(m => ({
+          nom: String(m.nom),
+          mot: String(m.mot),
+          montantVisible: m.montantVisible,
+          date: Number(m.date) || 0,
+          quand: m.date
+            ? new Date(Number(m.date)).toLocaleDateString('fr-FR',
+                {day:'numeric', month:'long'})
+            : ''
+        }));
+      liste.sort((a, b) => b.date - a.date);
+      afficher(liste);
+    } catch (e) {
+      // La page reste utilisable même si la base ne répond pas.
+    }
+  }
+
+  const livre = document.getElementById('livre');
+  if (actif) {
+    livre.hidden = false;
+    chargerMessages();
+
+    livre.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const nom   = document.getElementById('f-nom').value.trim();
+      const mot   = document.getElementById('f-mot').value.trim();
+      const cache = document.getElementById('f-cache').checked;
+      const etat  = document.getElementById('f-etat');
+      const bouton = document.getElementById('f-envoyer');
+      if (!nom || !mot) return;
+
+      bouton.disabled = true;
+      etat.className = '';
+      etat.textContent = 'Envoi…';
+      try {
+        const r = await fetch(base, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            nom: nom,
+            mot: mot,
+            montantVisible: !cache,
+            date: {'.sv': 'timestamp'}
+          })
+        });
+        if (!r.ok) throw new Error(r.status);
+        livre.reset();
+        etat.className = 'ok';
+        etat.textContent = 'Merci, ton mot est en ligne.';
+        await chargerMessages();
+      } catch (e) {
+        etat.className = '';
+        etat.textContent = "Ça n'a pas marché. Envoie-nous ton mot directement, on l'ajoutera.";
+      }
+      bouton.disabled = false;
     });
   }
 
